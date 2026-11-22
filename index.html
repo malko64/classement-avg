@@ -632,6 +632,7 @@ function renderHome() {
       ${s.entries.length ? podium(s) : '<p class="muted" style="margin:0">Aucun cubeur enregistré.</p>'}
       <div class="session-actions">
         <button class="small" onclick="openDetail('${s.id}', false)">Visualiser</button>
+        <button class="small" onclick="downloadPdf('${s.id}')" title="Télécharger le classement en PDF">PDF</button>
         <button class="small danger" onclick="deleteSession('${s.id}')">Supprimer</button>
       </div>
     </article>`).join('');
@@ -651,6 +652,7 @@ async function openDetail(id, editable = true) {
       ${rankingTable(s, false)}
       <div class="actions">
         <button class="primary" onclick="openDetail('${s.id}', true)">Modifier</button>
+        <button onclick="downloadPdf('${s.id}')">⬇ Télécharger en PDF</button>
       </div></div>
       <div style="text-align:center"><button onclick="showView('home')">← Retour à l'accueil</button></div>`;
     showView('detail');
@@ -711,8 +713,85 @@ async function deleteSession(id) {
   }
 }
 
+
+/* ---------- Export PDF ---------- */
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const el = document.createElement('script'); el.src = src; el.onload = res;
+    el.onerror = () => rej(new Error('Chargement impossible : ' + src));
+    document.head.appendChild(el);
+  });
+}
+async function downloadPdf(id) {
+  const s = getSession(id);
+  if (!s) return;
+  try {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  } catch (e) { alert("Impossible de préparer le PDF (connexion Internet ?)."); return; }
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+  // Bandeau titre + bande aux couleurs du cube
+  pdf.setFillColor(13, 19, 32); pdf.rect(0, 0, W, 26, 'F');
+  const cols = [[229,56,59],[255,138,31],[255,210,63],[31,191,117],[47,123,255],[243,245,249]];
+  cols.forEach((c, i) => { pdf.setFillColor(...c); pdf.rect(i * W / 6, 26, W / 6 + 0.2, 1.6, 'F'); });
+  pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(18);
+  pdf.text('Classement AVG', 14, 13);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(184, 195, 214);
+  pdf.text('Speedcubing · moyenne sur 5 résolutions', 14, 19.5);
+  // Infos session
+  pdf.setTextColor(18, 24, 38); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(14);
+  pdf.text(sessionName(s), 14, 40);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(102, 112, 133);
+  pdf.text(`${fmtDate(s.date)}  ·  ${s.entries.length} cubeur${s.entries.length > 1 ? 's' : ''}  ·  ${s.status === 'done' ? 'Session validée' : 'Session en attente'}`, 14, 46.5);
+  // Tableau
+  const ranked = [...s.entries].sort(byRank);
+  const body = ranked.map((e, i) => {
+    const { best, worst } = computeAvg(e.times);
+    return [i + 1, cuberName(e), fmt(e.avg), fmt(Math.min(...e.times)),
+      ...e.times.map((t, j) => (j === best || j === worst) ? `(${fmt(t)})` : fmt(t))];
+  });
+  const medals = [[245,183,0],[167,176,191],[205,127,74]];
+  pdf.autoTable({
+    startY: 52,
+    head: [['#', 'Nom', 'AVG', 'Single', 'Essai 1', 'Essai 2', 'Essai 3', 'Essai 4', 'Essai 5']],
+    body: body.length ? body : [['', 'Aucun cubeur', '', '', '', '', '', '', '']],
+    theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 9.5, cellPadding: 2.4, lineColor: [227, 231, 239], lineWidth: 0.2, textColor: [18, 24, 38], halign: 'center' },
+    headStyles: { fillColor: [47, 123, 255], textColor: 255, fontStyle: 'bold', fontSize: 8.5 },
+    alternateRowStyles: { fillColor: [246, 247, 251] },
+    columnStyles: { 0: { cellWidth: 10, fontStyle: 'bold' }, 1: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto' },
+      2: { fontStyle: 'bold', textColor: [47, 123, 255] }, 3: { fontStyle: 'bold' } },
+    didParseCell: d => {
+      if (d.section !== 'body' || !ranked.length) return;
+      const e = ranked[d.row.index];
+      if (d.column.index === 0 && d.row.index < 3) { d.cell.styles.fillColor = medals[d.row.index]; }
+      if (d.column.index >= 4) {
+        const { best, worst } = computeAvg(e.times), j = d.column.index - 4;
+        if (j === best) d.cell.styles.textColor = [18, 165, 100];
+        if (j === worst) d.cell.styles.textColor = [229, 56, 59];
+      }
+    },
+    margin: { left: 14, right: 14 }
+  });
+  // Légende + pied de page
+  let y = pdf.lastAutoTable.finalY + 7;
+  pdf.setFontSize(8.5); pdf.setTextColor(102, 112, 133);
+  pdf.text("Entre parenthèses : meilleur et plus mauvais temps, non comptés dans l'AVG. 2 DNF ou plus = AVG DNF.", 14, y);
+  const pages = pdf.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    pdf.setPage(i); pdf.setFontSize(8.5); pdf.setTextColor(102, 112, 133);
+    pdf.text('www.atoutcubes.com', 14, H - 8);
+    pdf.text(`Imprimé le ${fmtDate(new Date().toISOString())}  ·  page ${i}/${pages}`, W - 14, H - 8, { align: 'right' });
+  }
+  const file = sessionName(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '') || 'session';
+  pdf.save(`classement-${file}.pdf`);
+}
+
 // Fonctions utilisées par les boutons de la page
-Object.assign(window, { togglePw, showView, newSession, openEntry, saveEntry, cancelEntry, openDetail,
+Object.assign(window, { downloadPdf, togglePw, showView, newSession, openEntry, saveEntry, cancelEntry, openDetail,
   changeDate, changeName, setStatus, deleteEntry, deleteSession });
 
 /* ---------- Démarrage ---------- */
