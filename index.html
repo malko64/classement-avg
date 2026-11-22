@@ -443,7 +443,11 @@ function showView(name) {
   if (name === 'home') renderHome();
   window.scrollTo(0, 0);
 }
-const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
+// Date affichée : JJ/MM/AAAA HH:MM
+function fmtDate(iso) {
+  const d = new Date(iso), p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 const getSession = id => sessions.find(s => s.id === id);
 // Nom par défaut : « JJ:MM:AA à HH:MM »
 function defaultName(iso) {
