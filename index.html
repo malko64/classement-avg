@@ -40,7 +40,7 @@
   label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
   input { font: inherit; width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
     background: var(--bg); color: var(--text); }
-  input.invalid { border-color: var(--danger); }
+  input.invalid { border-color: var(--danger); color: var(--danger); font-weight: 700; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .times { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
   @media (max-width: 560px) { .times { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } }
@@ -105,7 +105,7 @@
       <div class="actions">
         <button class="ok" onclick="saveEntry('next')">Nouveau cubeur</button>
         <button class="primary" onclick="saveEntry('done')">Valider</button>
-        <button onclick="cancelEntry()">Annuler</button>
+        <button id="btn-cancel" onclick="cancelEntry()">Annuler</button>
       </div>
     </div>
   </section>
@@ -130,6 +130,14 @@
       <button type="submit" class="primary" value="ok">OK</button>
       <button type="button" onclick="document.getElementById('pw-dialog').close('cancel')">Annuler</button>
     </div>
+  </form>
+</dialog>
+<!-- Fenêtre erreur de saisie -->
+<dialog id="err-dialog">
+  <form method="dialog">
+    <h2 style="margin:0 0 8px;font-size:1.1rem;color:var(--danger)">⚠️ Erreur de saisie</h2>
+    <p id="err-text" style="margin:0 0 14px"></p>
+    <div class="actions" style="margin-top:0"><button type="submit" class="primary" autofocus>Corriger</button></div>
   </form>
 </dialog>
 <div id="toast" class="hidden"></div>
@@ -339,8 +347,16 @@ function openEntry(sessionId, entryId) {
       }
       updateAvg();
     });
+    inp.addEventListener('blur', ev => {
+      if (ev.relatedTarget && ev.relatedTarget.id === 'btn-cancel') return; // on laisse « Annuler » fonctionner
+      checkField(inp, i);
+    });
     inp.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); (all[i + 1] || document.querySelector('#view-entry .actions .ok')).focus(); return; }
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        if (!checkField(inp, i)) return;
+        (all[i + 1] || document.querySelector('#view-entry .actions .ok')).focus(); return;
+      }
       if (ev.key === 'd' || ev.key === 'D') { ev.preventDefault(); inp.value = 'DNF'; updateAvg(); return; }
       if (inp.value === 'DNF' && (ev.key === 'Backspace' || ev.key === 'Delete' || /^\d$/.test(ev.key))) {
         if (!/^\d$/.test(ev.key)) ev.preventDefault();
@@ -352,6 +368,27 @@ function openEntry(sessionId, entryId) {
   showView('entry');
   updateAvg();
   document.getElementById('f-nom').focus();
+}
+// Vérifie qu'un temps est réaliste : minutes 0–99, secondes 00–59, centièmes 00–99
+function timeError(v) {
+  if (!v || v === 'DNF') return null;
+  const m = v.match(/^(?:(\d+):)?(\d+)\.(\d+)$/);
+  if (!m) return 'Format de temps non reconnu.';
+  if (+(m[1] || 0) > 99) return `Les minutes doivent être comprises entre 0 et 99 (vous avez saisi ${m[1]}).`;
+  if (+m[2] > 59) return `Les secondes doivent être comprises entre 00 et 59 (vous avez saisi ${m[2]}).`;
+  if (+m[3] > 99) return `Les centièmes doivent être compris entre 00 et 99 (vous avez saisi ${m[3]}).`;
+  return null;
+}
+// Affiche la fenêtre d'erreur si le temps n'est pas valable ; renvoie true si tout va bien
+function checkField(inp, i) {
+  const dlg = document.getElementById('err-dialog');
+  const msg = timeError(inp.value);
+  inp.classList.toggle('invalid', !!msg);
+  if (!msg || dlg.open || document.getElementById('pw-dialog').open) return !msg;
+  document.getElementById('err-text').textContent = `Essai ${i + 1} : ${inp.value} — ${msg}`;
+  dlg.addEventListener('close', () => { inp.focus(); inp.select(); }, { once: true });
+  dlg.showModal();
+  return false;
 }
 function readTimes() {
   return [0, 1, 2, 3, 4].map(i => parseTime(document.getElementById('t' + i).value));
@@ -375,6 +412,7 @@ async function saveEntry(mode) {
   const prenom = document.getElementById('f-prenom').value.trim();
   const times = readTimes();
   if (!nom || !prenom) { alert('Merci de renseigner le nom et le prénom.'); return; }
+  for (let i = 0; i < 5; i++) if (!checkField(document.getElementById('t' + i), i)) return;
   if (times.some(t => t === null || Number.isNaN(t))) { alert('Merci de saisir 5 temps valides (ex : 1234 pour 12.34, ou D pour DNF).'); return; }
   const s = structuredClone(getSession(current.sessionId));
   const avg = computeAvg(times).avg;
