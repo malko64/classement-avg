@@ -608,8 +608,8 @@ async function openDetail(id, editable = true) {
       ${rankingTable(s, false)}
       <div class="actions">
         <button class="primary" onclick="openDetail('${s.id}', true)">Modifier</button>
-        <button onclick="showView('home')">Retour à l'accueil</button>
-      </div></div>`;
+      </div></div>
+      <div style="text-align:center"><button onclick="showView('home')">← Retour à l'accueil</button></div>`;
     showView('detail');
     return;
   }
