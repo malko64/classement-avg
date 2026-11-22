@@ -206,22 +206,24 @@
 <!-- Fenêtre mot de passe -->
 <dialog id="pw-dialog">
   <form method="dialog" id="pw-form">
-    <h2 id="pw-title" style="margin:0 0 8px;font-size:1.1rem"></h2>
-    <div id="pw-name-wrap" style="margin-bottom:12px">
+    <h2 id="pw-title" style="margin:0 0 12px;font-size:1.1rem"></h2>
+    <div id="pw-name-wrap" style="margin-bottom:14px">
       <label for="pw-name">Nom de session</label>
       <input id="pw-name" autocomplete="off" maxlength="80" placeholder="ex : Compétition du club">
-      <p class="hint" id="pw-name-hint" style="margin-top:4px"></p>
+      <p class="hint" id="pw-name-hint" style="margin-top:6px"></p>
     </div>
-    <p id="pw-text" class="muted" style="margin:0 0 12px"></p>
-    <label for="pw-1">Mot de passe</label>
-    <input type="password" id="pw-1" autocomplete="new-password">
-    <div id="pw-confirm-wrap" style="margin-top:10px">
+    <div id="pw-1-wrap">
+      <label for="pw-1" id="pw-1-label">Mot de passe</label>
+      <input type="password" id="pw-1" autocomplete="new-password">
+    </div>
+    <div id="pw-confirm-wrap">
       <label for="pw-2">Confirmer le mot de passe</label>
       <input type="password" id="pw-2" autocomplete="new-password">
     </div>
+    <p id="pw-text" class="hint" style="margin:6px 0 0"></p>
     <p id="pw-error" style="color:var(--danger);font-size:0.85rem;min-height:1em;margin:8px 0 0"></p>
     <div class="actions" style="margin-top:8px">
-      <button type="submit" class="primary" value="ok">OK</button>
+      <button type="submit" class="primary" value="ok" id="pw-ok">OK</button>
       <button type="button" onclick="document.getElementById('pw-dialog').close('cancel')">Annuler</button>
     </div>
   </form>
@@ -314,7 +316,7 @@ const byRank = (a, b) => (sortKey(a.avg) - sortKey(b.avg)) || (Math.min(...a.tim
 /* ---------- Base de données ---------- */
 // DNF est enregistré comme -1 dans la base
 function toDoc(s) {
-  return { name: s.name || '', date: s.date, status: s.status,
+  return { name: s.name || '', date: s.date, status: s.status, locked: s.locked !== false,
     entries: s.entries.map(e => ({ id: e.id, nom: e.nom, prenom: e.prenom,
       times: e.times.map(t => t === Infinity ? -1 : t) })) };
 }
@@ -327,7 +329,7 @@ function fromDoc(d) {
       nom: String(e.nom ?? ''), prenom: String(e.prenom ?? ''), times, avg: computeAvg(times).avg };
   });
   const date = isNaN(new Date(data.date)) ? new Date(0).toISOString() : data.date;
-  return { id: d.id, name: String(data.name ?? '').slice(0, 80), date, status: data.status === 'done' ? 'done' : 'wait', entries };
+  return { id: d.id, name: String(data.name ?? '').slice(0, 80), date, status: data.status === 'done' ? 'done' : 'wait', locked: data.locked !== false, entries };
 }
 async function hashPw(id, pw) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cube-avg|' + id + '|' + pw));
@@ -352,43 +354,63 @@ async function writeSession(s, { remove = false, key = keys[s.id] } = {}) {
 }
 
 /* ---------- Mot de passe ---------- */
-function askPassword({ title, text, confirm = false }) {
+// mode « new » : nom + mot de passe facultatif, puis confirmation dans un 2e temps → { name, pw } ou null
+// mode « ask » : mot de passe obligatoire → chaîne ou null
+function askPassword({ title, text = '', mode = 'ask' }) {
   return new Promise(resolve => {
-    const dlg = document.getElementById('pw-dialog');
-    const p1 = document.getElementById('pw-1'), p2 = document.getElementById('pw-2');
-    const errEl = document.getElementById('pw-error');
-    document.getElementById('pw-title').textContent = title;
-    document.getElementById('pw-text').textContent = text;
-    document.getElementById('pw-confirm-wrap').classList.toggle('hidden', !confirm);
-    document.getElementById('pw-name-wrap').classList.toggle('hidden', !confirm);
-    document.getElementById('pw-name').value = '';
-    document.getElementById('pw-name-hint').textContent =
+    const $ = id => document.getElementById(id);
+    const dlg = $('pw-dialog'), p1 = $('pw-1'), p2 = $('pw-2'), errEl = $('pw-error'), form = $('pw-form');
+    const isNew = mode === 'new';
+    let step = 1;
+    const setStep = n => {
+      step = n;
+      $('pw-name-wrap').classList.toggle('hidden', !isNew || n === 2);
+      $('pw-1-wrap').classList.toggle('hidden', n === 2);
+      $('pw-confirm-wrap').classList.toggle('hidden', n !== 2);
+      $('pw-text').textContent = n === 2 ? 'Retapez le mot de passe pour le confirmer.' : text;
+      $('pw-ok').textContent = isNew && n === 1 ? 'Continuer' : 'OK';
+      errEl.textContent = '';
+      (n === 2 ? p2 : isNew ? $('pw-name') : p1).focus();
+    };
+    $('pw-title').textContent = title;
+    $('pw-1-label').textContent = isNew ? 'Mot de passe (facultatif)' : 'Mot de passe';
+    $('pw-name').value = ''; p1.value = p2.value = '';
+    $('pw-name-hint').textContent =
       `Si aucun nom n'est saisi, la session s'appellera « ${defaultName(new Date().toISOString())} ».`;
-    p1.value = p2.value = ''; errEl.textContent = '';
-    const form = document.getElementById('pw-form');
+    let result = null;
     const onSubmit = ev => {
-      if (!p1.value) { ev.preventDefault(); errEl.textContent = 'Saisissez un mot de passe.'; return; }
-      if (confirm && p1.value.length < 4) { ev.preventDefault(); errEl.textContent = 'Au moins 4 caractères.'; return; }
-      if (confirm && p1.value !== p2.value) { ev.preventDefault(); errEl.textContent = 'Les deux mots de passe ne sont pas identiques.'; return; }
+      if (!isNew) {
+        if (!p1.value) { ev.preventDefault(); errEl.textContent = 'Saisissez le mot de passe.'; return; }
+        result = p1.value; return;
+      }
+      if (step === 1) {
+        if (!p1.value) { result = { name: $('pw-name').value.trim(), pw: '' }; return; }
+        ev.preventDefault();
+        if (p1.value.length < 4) { errEl.textContent = 'Au moins 4 caractères (ou laissez vide).'; return; }
+        setStep(2); return;
+      }
+      if (p1.value !== p2.value) { ev.preventDefault(); p2.value = ''; errEl.textContent = 'Les deux mots de passe ne sont pas identiques.'; return; }
+      result = { name: $('pw-name').value.trim(), pw: p1.value };
     };
     form.addEventListener('submit', onSubmit);
     dlg.addEventListener('close', () => {
       form.removeEventListener('submit', onSubmit);
-      resolve(dlg.returnValue === 'ok' && p1.value ? p1.value : null);
+      resolve(dlg.returnValue === 'ok' ? result : null);
     }, { once: true });
     dlg.returnValue = '';
-    dlg.showModal(); (confirm ? document.getElementById('pw-name') : p1).focus();
+    dlg.showModal(); setStep(1);
   });
 }
 // Vérifie qu'on connaît le mot de passe de la session (demandé une fois par appareil)
 async function ensureKey(id) {
   if (keys[id]) return true;
+  const s = getSession(id);
+  if (!s) return false;
+  if (!s.locked) { keys[id] = await hashPw(id, ''); saveKeys(); return true; } // session sans mot de passe
   const pw = await askPassword({ title: 'Mot de passe de la session',
     text: 'Seule la personne qui a créé cette session peut la modifier ou la supprimer.' });
   if (!pw) return false;
   const key = await hashPw(id, pw);
-  const s = getSession(id);
-  if (!s) return false;
   if (!(await writeSession(s, { key }))) return false;
   keys[id] = key; saveKeys();
   return true;
@@ -414,13 +436,11 @@ const sessionName = s => s.name || defaultName(s.date);
 /* ---------- Session / saisie ---------- */
 async function newSession() {
   if (!db) return;
-  const pw = await askPassword({ title: 'Nouvelle session',
-    text: 'Choisissez un mot de passe pour cette session. Il vous sera demandé pour modifier ou supprimer les temps depuis un autre appareil. Notez-le bien : il ne peut pas être récupéré.',
-    confirm: true });
-  if (!pw) return;
-  const id = uid(), key = await hashPw(id, pw), date = new Date().toISOString();
-  const name = document.getElementById('pw-name').value.trim() || defaultName(date);
-  const s = { id, name, date, status: 'wait', entries: [] };
+  const r = await askPassword({ title: 'Nouvelle session', mode: 'new',
+    text: "Avec un mot de passe, vous seul pourrez modifier ou supprimer cette session (il ne peut pas être récupéré). Sans mot de passe, tout le monde peut la modifier." });
+  if (!r) return;
+  const id = uid(), key = await hashPw(id, r.pw), date = new Date().toISOString();
+  const s = { id, name: r.name || defaultName(date), date, status: 'wait', locked: !!r.pw, entries: [] };
   const b = writeBatch(db);
   b.set(doc(db, 'sessions', id), toDoc(s));
   b.set(doc(db, 'locks', id), { h: key });
@@ -583,7 +603,7 @@ function renderHome() {
   }
   const list = sorted.map(s => `<article class="session ${s.status === 'done' ? 'done' : ''}">
       <div class="session-head">
-        <div><div class="session-name">${esc(sessionName(s))}</div>
+        <div><div class="session-name">${s.locked ? '<span title="Protégée par mot de passe">🔒 </span>' : ''}${esc(sessionName(s))}</div>
           <div class="session-meta">${fmtDate(s.date)} · ${s.entries.length} cubeur${s.entries.length > 1 ? 's' : ''}</div></div>
         ${statusBadge(s)}
       </div>

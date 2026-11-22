@@ -17,7 +17,9 @@ service cloud.firestore {
       allow create: if id.matches('^[a-z0-9]{8,24}$')
         && !exists(/databases/$(db)/documents/locks/$(id))
         && existsAfter(/databases/$(db)/documents/locks/$(id));
-      allow update, delete: if proofOk(id);
+      allow update: if proofOk(id)
+        && request.resource.data.get('locked', true) == resource.data.get('locked', true);
+      allow delete: if proofOk(id);
     }
 
     match /locks/{id} {
