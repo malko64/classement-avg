@@ -96,7 +96,7 @@
       <div class="times" id="times"></div>
       <p class="hint">Tapez uniquement les chiffres, sans virgule : <b>1234</b> → 12.34 · <b>10520</b> → 1:05.20
         (2 derniers chiffres = centièmes, 2 suivants = secondes, le reste = minutes).
-        <b>Entrée</b> ou <b>Espace</b> passe au temps suivant. Touche <b>D</b> = DNF (essai raté).
+        <b>Entrée</b> ou <b>Espace</b> passe au temps suivant. Touche <b>/</b> (ou <b>D</b>) = DNF (essai raté) : il compte comme le plus mauvais temps, et avec 2 DNF l'AVG est DNF.
         La meilleure (vert) et la plus mauvaise (rouge) sont ignorées, l'AVG est la moyenne des 3 autres.</p>
       <div class="avg-box">
         <div class="muted">AVG (moyenne sur 5)</div>
@@ -341,6 +341,7 @@ function openEntry(sessionId, entryId) {
   }
   box.querySelectorAll('input').forEach((inp, i, all) => {
     inp.addEventListener('input', () => {
+      if (/[\/dD]/.test(inp.value)) inp.value = 'DNF'; // « / » ou « D » = DNF (aussi sur téléphone)
       if (inp.value !== 'DNF') {
         const digits = inp.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6);
         inp.value = digits ? formatDigits(digits) : '';
@@ -357,7 +358,7 @@ function openEntry(sessionId, entryId) {
         if (!checkField(inp, i)) return;
         (all[i + 1] || document.querySelector('#view-entry .actions .ok')).focus(); return;
       }
-      if (ev.key === 'd' || ev.key === 'D') { ev.preventDefault(); inp.value = 'DNF'; updateAvg(); return; }
+      if (ev.key === 'd' || ev.key === 'D' || ev.key === '/') { ev.preventDefault(); inp.value = 'DNF'; updateAvg(); return; }
       if (inp.value === 'DNF' && (ev.key === 'Backspace' || ev.key === 'Delete' || /^\d$/.test(ev.key))) {
         if (!/^\d$/.test(ev.key)) ev.preventDefault();
         inp.value = ''; updateAvg();
