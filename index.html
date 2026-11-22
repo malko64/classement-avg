@@ -147,6 +147,12 @@
   .dropped { opacity: .8; }
   .rank { width: 2.6em; }
   .hidden { display: none !important; }
+  .pw-field { position: relative; }
+  .pw-field input { padding-right: 46px; }
+  .pw-field .eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none;
+    padding: 6px 9px; font-size: 1rem; opacity: .55; }
+  .pw-field .eye:hover { background: none; opacity: 1; }
+  .pw-field .eye.on { opacity: 1; }
   .hint { font-size: .8rem; color: var(--muted); margin-top: 10px; }
   .hint b { color: var(--text); }
   .back { background: none; border: 0; padding: 0; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
@@ -178,10 +184,7 @@
     <div class="card">
       <h2 id="entry-title">Nouveau cubeur</h2>
       <p class="sub" id="entry-session-info"></p>
-      <div class="grid2">
-        <div><label for="f-nom">Nom</label><input id="f-nom" autocomplete="off"></div>
-        <div><label for="f-prenom">Prénom</label><input id="f-prenom" autocomplete="off"></div>
-      </div>
+      <div style="max-width:420px"><label for="f-nom">Nom</label><input id="f-nom" autocomplete="off" maxlength="60"></div>
       <div class="times" id="times"></div>
       <p class="hint">Tapez uniquement les chiffres, sans virgule : <b>1234</b> → 12.34 · <b>10520</b> → 1:05.20
         (2 derniers chiffres = centièmes, 2 suivants = secondes, le reste = minutes).
@@ -214,11 +217,13 @@
     </div>
     <div id="pw-1-wrap">
       <label for="pw-1" id="pw-1-label">Mot de passe</label>
-      <input type="password" id="pw-1" autocomplete="new-password">
+      <div class="pw-field"><input type="password" id="pw-1" autocomplete="new-password">
+        <button type="button" class="eye" aria-label="Afficher le mot de passe" onclick="togglePw(this)">👁</button></div>
     </div>
     <div id="pw-confirm-wrap">
       <label for="pw-2">Confirmer le mot de passe</label>
-      <input type="password" id="pw-2" autocomplete="new-password">
+      <div class="pw-field"><input type="password" id="pw-2" autocomplete="new-password">
+        <button type="button" class="eye" aria-label="Afficher le mot de passe" onclick="togglePw(this)">👁</button></div>
     </div>
     <p id="pw-text" class="hint" style="margin:6px 0 0"></p>
     <p id="pw-error" style="color:var(--danger);font-size:0.85rem;min-height:1em;margin:8px 0 0"></p>
@@ -356,8 +361,16 @@ async function writeSession(s, { remove = false, key = keys[s.id] } = {}) {
 /* ---------- Mot de passe ---------- */
 // mode « new » : nom + mot de passe facultatif, puis confirmation dans un 2e temps → { name, pw } ou null
 // mode « ask » : mot de passe obligatoire → chaîne ou null
+function togglePw(btn) {
+  const inp = btn.previousElementSibling, show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.classList.toggle('on', show);
+  btn.setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+  inp.focus();
+}
 function askPassword({ title, text = '', mode = 'ask' }) {
   return new Promise(resolve => {
+    document.querySelectorAll('#pw-dialog .eye').forEach(b => { b.previousElementSibling.type = 'password'; b.classList.remove('on'); });
     const $ = id => document.getElementById(id);
     const dlg = $('pw-dialog'), p1 = $('pw-1'), p2 = $('pw-2'), errEl = $('pw-error'), form = $('pw-form');
     const isNew = mode === 'new';
@@ -431,6 +444,7 @@ function defaultName(iso) {
   const d = new Date(iso), p = n => String(n).padStart(2, '0');
   return `${p(d.getDate())}:${p(d.getMonth() + 1)}:${p(d.getFullYear() % 100)} à ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+const cuberName = e => e.prenom ? `${e.prenom} ${e.nom.toUpperCase()}` : e.nom;
 const sessionName = s => s.name || defaultName(s.date);
 
 /* ---------- Session / saisie ---------- */
@@ -456,8 +470,7 @@ function openEntry(sessionId, entryId) {
   document.getElementById('entry-title').textContent = e ? 'Modifier le cubeur' : 'Nouveau cubeur';
   document.getElementById('entry-session-info').textContent =
     `${sessionName(s)} — ${fmtDate(s.date)} — ${s.entries.length} cubeur(s) enregistré(s)`;
-  document.getElementById('f-nom').value = e ? e.nom : '';
-  document.getElementById('f-prenom').value = e ? e.prenom : '';
+  document.getElementById('f-nom').value = e ? [e.prenom, e.nom].filter(Boolean).join(' ') : '';
   const box = document.getElementById('times');
   box.innerHTML = '';
   for (let i = 0; i < 5; i++) {
@@ -536,19 +549,18 @@ function updateAvg() {
 }
 async function saveEntry(mode) {
   const nom = document.getElementById('f-nom').value.trim();
-  const prenom = document.getElementById('f-prenom').value.trim();
   const times = readTimes();
-  if (!nom || !prenom) { alert('Merci de renseigner le nom et le prénom.'); return; }
+  if (!nom) { alert('Merci de renseigner le nom du cubeur.'); document.getElementById('f-nom').focus(); return; }
   for (let i = 0; i < 5; i++) if (!checkField(document.getElementById('t' + i), i)) return;
   if (times.some(t => t === null || Number.isNaN(t))) { alert('Merci de saisir 5 temps valides (ex : 1234 pour 12.34, ou D pour DNF).'); return; }
   const s = structuredClone(getSession(current.sessionId));
   const avg = computeAvg(times).avg;
-  if (current.entryId) Object.assign(s.entries.find(x => x.id === current.entryId), { nom, prenom, times, avg });
-  else s.entries.push({ id: uid(), nom, prenom, times, avg });
+  if (current.entryId) Object.assign(s.entries.find(x => x.id === current.entryId), { nom, prenom: '', times, avg });
+  else s.entries.push({ id: uid(), nom, prenom: '', times, avg });
   if (mode === 'done') s.status = 'done';
   if (!(await writeSession(s))) return;
   Object.assign(getSession(s.id) || {}, s);
-  if (mode === 'next') { toast(`${prenom} ${nom} enregistré(e) — AVG ${fmt(avg)}`); openEntry(s.id, null); }
+  if (mode === 'next') { toast(`${nom} enregistré(e) — AVG ${fmt(avg)}`); openEntry(s.id, null); }
   else openDetail(s.id, false);
 }
 async function cancelEntry() {
@@ -568,7 +580,7 @@ function rankingTable(s, editable) {
     const btns = editable ? `<td style="white-space:nowrap">
         <button class="small" onclick="openEntry('${s.id}','${e.id}')">Modifier</button>
         <button class="small danger" onclick="deleteEntry('${s.id}','${e.id}')">Suppr.</button></td>` : '';
-    return `<tr><td class="rank">${medal}</td><td class="cuber">${esc(e.prenom)} ${esc(e.nom.toUpperCase())}</td>
+    return `<tr><td class="rank">${medal}</td><td class="cuber">${esc(cuberName(e))}</td>
       <td class="avg">${fmt(e.avg)}</td><td class="single">${fmt(Math.min(...e.times))}</td>${cells}${btns}</tr>`;
   }).join('');
   return `<div class="table-wrap"><table>
@@ -581,7 +593,7 @@ function statusBadge(s) {
 function podium(s) {
   const top = [...s.entries].sort(byRank).slice(0, 3);
   return '<ul class="podium">' + top.map((e, i) => `<li><span class="pos p${i + 1}">${i + 1}</span>
-    <span class="who">${esc(e.prenom)} ${esc(e.nom.toUpperCase())}</span><span class="t">${fmt(e.avg)}</span></li>`).join('') + '</ul>';
+    <span class="who">${esc(cuberName(e))}</span><span class="t">${fmt(e.avg)}</span></li>`).join('') + '</ul>';
 }
 function renderHome() {
   const el = document.getElementById('view-home');
@@ -665,7 +677,7 @@ function changeName(id, v) { updateSession(id, s => { s.name = v.trim() || defau
 function setStatus(id, st) { updateSession(id, s => { s.status = st; }); }
 function deleteEntry(sid, eid) {
   const e = getSession(sid).entries.find(x => x.id === eid);
-  if (!confirm(`Supprimer ${e.prenom} ${e.nom} de cette session ?`)) return;
+  if (!confirm(`Supprimer ${cuberName(e)} de cette session ?`)) return;
   updateSession(sid, s => { s.entries = s.entries.filter(x => x.id !== eid); });
 }
 async function deleteSession(id) {
@@ -690,7 +702,7 @@ async function deleteSession(id) {
 }
 
 // Fonctions utilisées par les boutons de la page
-Object.assign(window, { showView, newSession, openEntry, saveEntry, cancelEntry, openDetail,
+Object.assign(window, { togglePw, showView, newSession, openEntry, saveEntry, cancelEntry, openDetail,
   changeDate, changeName, setStatus, deleteEntry, deleteSession });
 
 /* ---------- Démarrage ---------- */
