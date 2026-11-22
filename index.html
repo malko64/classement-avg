@@ -147,6 +147,9 @@
   .dropped { opacity: .8; }
   .rank { width: 2.6em; }
   .hidden { display: none !important; }
+  .site-footer { border-top: 1px solid var(--border); padding: 22px 0 28px; text-align: center; font-size: .9rem; }
+  .site-footer a { color: var(--muted); font-weight: 600; text-decoration: none; }
+  .site-footer a:hover { color: var(--accent); text-decoration: underline; }
   .pw-field { position: relative; }
   .pw-field input { padding-right: 46px; }
   .pw-field .eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: none;
@@ -205,6 +208,9 @@
   <!-- Détail d'une session -->
   <section id="view-detail" class="hidden"></section>
 </main>
+<footer class="site-footer">
+  <div class="wrap"><a href="https://www.atoutcubes.com" target="_blank" rel="noopener">www.atoutcubes.com</a></div>
+</footer>
 
 <!-- Fenêtre mot de passe -->
 <dialog id="pw-dialog">
