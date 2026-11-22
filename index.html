@@ -118,6 +118,11 @@
 <dialog id="pw-dialog">
   <form method="dialog" id="pw-form">
     <h2 id="pw-title" style="margin:0 0 8px;font-size:1.1rem"></h2>
+    <div id="pw-name-wrap" style="margin-bottom:12px">
+      <label for="pw-name">Nom de session</label>
+      <input id="pw-name" autocomplete="off" maxlength="80" placeholder="ex : Compétition du club">
+      <p class="hint" id="pw-name-hint" style="margin-top:4px"></p>
+    </div>
     <p id="pw-text" class="muted" style="margin:0 0 12px"></p>
     <label for="pw-1">Mot de passe</label>
     <input type="password" id="pw-1" autocomplete="new-password">
@@ -219,7 +224,7 @@ const byRank = (a, b) => (sortKey(a.avg) - sortKey(b.avg)) || (Math.min(...a.tim
 /* ---------- Base de données ---------- */
 // DNF est enregistré comme -1 dans la base
 function toDoc(s) {
-  return { date: s.date, status: s.status,
+  return { name: s.name || '', date: s.date, status: s.status,
     entries: s.entries.map(e => ({ id: e.id, nom: e.nom, prenom: e.prenom,
       times: e.times.map(t => t === Infinity ? -1 : t) })) };
 }
@@ -232,7 +237,7 @@ function fromDoc(d) {
       nom: String(e.nom ?? ''), prenom: String(e.prenom ?? ''), times, avg: computeAvg(times).avg };
   });
   const date = isNaN(new Date(data.date)) ? new Date(0).toISOString() : data.date;
-  return { id: d.id, date, status: data.status === 'done' ? 'done' : 'wait', entries };
+  return { id: d.id, name: String(data.name ?? '').slice(0, 80), date, status: data.status === 'done' ? 'done' : 'wait', entries };
 }
 async function hashPw(id, pw) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cube-avg|' + id + '|' + pw));
@@ -265,6 +270,10 @@ function askPassword({ title, text, confirm = false }) {
     document.getElementById('pw-title').textContent = title;
     document.getElementById('pw-text').textContent = text;
     document.getElementById('pw-confirm-wrap').classList.toggle('hidden', !confirm);
+    document.getElementById('pw-name-wrap').classList.toggle('hidden', !confirm);
+    document.getElementById('pw-name').value = '';
+    document.getElementById('pw-name-hint').textContent =
+      `Si aucun nom n'est saisi, la session s'appellera « ${defaultName(new Date().toISOString())} ».`;
     p1.value = p2.value = ''; errEl.textContent = '';
     const form = document.getElementById('pw-form');
     const onSubmit = ev => {
@@ -278,7 +287,7 @@ function askPassword({ title, text, confirm = false }) {
       resolve(dlg.returnValue === 'ok' && p1.value ? p1.value : null);
     }, { once: true });
     dlg.returnValue = '';
-    dlg.showModal(); p1.focus();
+    dlg.showModal(); (confirm ? document.getElementById('pw-name') : p1).focus();
   });
 }
 // Vérifie qu'on connaît le mot de passe de la session (demandé une fois par appareil)
@@ -305,6 +314,12 @@ function showView(name) {
 }
 const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
 const getSession = id => sessions.find(s => s.id === id);
+// Nom par défaut : « Session JJ/MM/AAAA - HH:MM »
+function defaultName(iso) {
+  const d = new Date(iso), p = n => String(n).padStart(2, '0');
+  return `Session ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} - ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+const sessionName = s => s.name || defaultName(s.date);
 
 /* ---------- Session / saisie ---------- */
 async function newSession() {
@@ -313,8 +328,9 @@ async function newSession() {
     text: 'Choisissez un mot de passe pour cette session. Il vous sera demandé pour modifier ou supprimer les temps depuis un autre appareil. Notez-le bien : il ne peut pas être récupéré.',
     confirm: true });
   if (!pw) return;
-  const id = uid(), key = await hashPw(id, pw);
-  const s = { id, date: new Date().toISOString(), status: 'wait', entries: [] };
+  const id = uid(), key = await hashPw(id, pw), date = new Date().toISOString();
+  const name = document.getElementById('pw-name').value.trim() || defaultName(date);
+  const s = { id, name, date, status: 'wait', entries: [] };
   const b = writeBatch(db);
   b.set(doc(db, 'sessions', id), toDoc(s));
   b.set(doc(db, 'locks', id), { h: key });
@@ -329,7 +345,7 @@ function openEntry(sessionId, entryId) {
   const e = entryId ? s.entries.find(x => x.id === entryId) : null;
   document.getElementById('entry-title').textContent = e ? 'Modifier le cubeur' : 'Nouveau cubeur';
   document.getElementById('entry-session-info').textContent =
-    `Session du ${fmtDate(s.date)} — ${s.entries.length} cubeur(s) enregistré(s)`;
+    `${sessionName(s)} — ${fmtDate(s.date)} — ${s.entries.length} cubeur(s) enregistré(s)`;
   document.getElementById('f-nom').value = e ? e.nom : '';
   document.getElementById('f-prenom').value = e ? e.prenom : '';
   const box = document.getElementById('times');
@@ -471,7 +487,8 @@ function renderHome() {
     return;
   }
   const list = sorted.map(s => `<div class="session-row">
-      <div><b>${fmtDate(s.date)}</b> ${statusBadge(s)}<br>
+      <div><b>${esc(sessionName(s))}</b> ${statusBadge(s)}<br>
+        <span class="muted">${fmtDate(s.date)}</span> ·
         <span class="muted">${s.entries.length} cubeur(s)</span>
         ${s.entries.length ? `<div style="margin-top:4px;font-size:0.9rem">${podium(s)}</div>` : ''}</div>
       <div style="white-space:nowrap">
@@ -488,7 +505,8 @@ async function openDetail(id, editable = true) {
   const el = document.getElementById('view-detail');
   if (!editable) {
     el.innerHTML = `<div class="card">
-      <h2>Session du ${fmtDate(s.date)} ${statusBadge(s)}</h2>
+      <h2>${esc(sessionName(s))} ${statusBadge(s)}</h2>
+      <p class="muted" style="margin-top:-6px">${fmtDate(s.date)}</p>
       ${rankingTable(s, false)}
       <div class="actions">
         <button class="primary" onclick="openDetail('${s.id}', true)">Modifier</button>
@@ -499,9 +517,13 @@ async function openDetail(id, editable = true) {
   }
   const dateLocal = new Date(new Date(s.date).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   el.innerHTML = `<div class="card">
-    <h2>Session du ${fmtDate(s.date)} ${statusBadge(s)}</h2>
-    <div style="max-width:260px;margin-bottom:12px"><label for="s-date">Date de la session</label>
-      <input type="datetime-local" id="s-date" value="${dateLocal}" onchange="changeDate('${s.id}', this.value)"></div>
+    <h2>${esc(sessionName(s))} ${statusBadge(s)}</h2>
+    <div class="grid2" style="max-width:560px;margin-bottom:12px">
+      <div><label for="s-name">Nom de session</label>
+        <input id="s-name" maxlength="80" value="${esc(s.name)}" placeholder="${esc(defaultName(s.date))}" onchange="changeName('${s.id}', this.value)"></div>
+      <div><label for="s-date">Date de la session</label>
+        <input type="datetime-local" id="s-date" value="${dateLocal}" onchange="changeDate('${s.id}', this.value)"></div>
+    </div>
     ${rankingTable(s, true)}
     <div class="actions">
       <button class="ok" onclick="openEntry('${s.id}', null)">Ajouter un cubeur</button>
@@ -518,6 +540,7 @@ async function updateSession(id, change) {
   if (await writeSession(s)) { Object.assign(getSession(id) || {}, s); openDetail(id, true); }
 }
 function changeDate(id, v) { if (v) updateSession(id, s => { s.date = new Date(v).toISOString(); }); }
+function changeName(id, v) { updateSession(id, s => { s.name = v.trim() || defaultName(s.date); }); }
 function setStatus(id, st) { updateSession(id, s => { s.status = st; }); }
 function deleteEntry(sid, eid) {
   const e = getSession(sid).entries.find(x => x.id === eid);
@@ -536,7 +559,7 @@ async function deleteSession(id) {
 
 // Fonctions utilisées par les boutons de la page
 Object.assign(window, { showView, newSession, openEntry, saveEntry, cancelEntry, openDetail,
-  changeDate, setStatus, deleteEntry, deleteSession });
+  changeDate, changeName, setStatus, deleteEntry, deleteSession });
 
 /* ---------- Démarrage ---------- */
 if (firebaseConfig) {
