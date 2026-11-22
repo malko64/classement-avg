@@ -45,8 +45,8 @@
   .cube-bar { height: 4px; display: flex; }
   .cube-bar span { flex: 1; }
 
-  main { padding-top: 20px; padding-bottom: 40px; }
-  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  main { padding-top: 36px; padding-bottom: 40px; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
   .toolbar h2 { margin: 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; }
   .toolbar .count { color: var(--muted); font-weight: 500; }
 
@@ -572,7 +572,7 @@ function renderHome() {
   const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
   const toolbar = `<div class="toolbar">
       <h2>Sessions ${loaded ? `<span class="count">· ${sorted.length}</span>` : ''}</h2>
-      <button class="cta" onclick="newSession()">＋ Nouvelle session</button>
+      <button class="primary" onclick="newSession()">＋ Nouvelle session</button>
     </div>`;
   if (!loaded) { el.innerHTML = toolbar + '<div class="card"><p class="muted">Chargement des sessions…</p></div>'; return; }
   if (!sorted.length) {
