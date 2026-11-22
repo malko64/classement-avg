@@ -669,9 +669,20 @@ function deleteEntry(sid, eid) {
   updateSession(sid, s => { s.entries = s.entries.filter(x => x.id !== eid); });
 }
 async function deleteSession(id) {
-  if (!(await ensureKey(id))) return;
-  if (!confirm('Supprimer définitivement cette session et tous ses temps ?')) return;
-  if (await writeSession(getSession(id), { remove: true })) {
+  const s = getSession(id);
+  if (!s) return;
+  let key;
+  if (s.locked) {
+    // Session protégée : le mot de passe est toujours redemandé pour supprimer, même sur l'appareil qui l'a créée
+    const pw = await askPassword({ title: `Supprimer « ${sessionName(s)} »`,
+      text: 'Cette session est protégée : saisissez son mot de passe pour la supprimer définitivement.' });
+    if (!pw) return;
+    key = await hashPw(id, pw);
+  } else {
+    if (!confirm(`Supprimer définitivement « ${sessionName(s)} » et tous ses temps ?`)) return;
+    key = await hashPw(id, '');
+  }
+  if (await writeSession(s, { remove: true, key })) {
     delete keys[id]; saveKeys();
     sessions = sessions.filter(x => x.id !== id);
     showView('home');
