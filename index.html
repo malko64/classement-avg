@@ -403,10 +403,10 @@ function showView(name) {
 }
 const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
 const getSession = id => sessions.find(s => s.id === id);
-// Nom par défaut : « Session JJ/MM/AAAA - HH:MM »
+// Nom par défaut : « JJ:MM:AA à HH:MM »
 function defaultName(iso) {
   const d = new Date(iso), p = n => String(n).padStart(2, '0');
-  return `Session ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} - ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getDate())}:${p(d.getMonth() + 1)}:${p(d.getFullYear() % 100)} à ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 const sessionName = s => s.name || defaultName(s.date);
 
