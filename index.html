@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classement AVG Cubeurs</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1d2330; --muted: #6b7280;
+    --accent: #2563eb; --accent-text: #ffffff; --ok: #16a34a; --warn: #d97706; --danger: #dc2626;
+    --border: #e2e5ea; --best: #16a34a; --worst: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1c212b; --text: #e8ebf0; --muted: #9aa3b2;
+      --accent: #4f8cff; --border: #2c3340; --ok: #22c55e; --warn: #f59e0b; --danger: #f05252;
+      --best: #22c55e; --worst: #f05252;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 16px; }
+  header .wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  main { padding: 16px; }
+  .menu { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--card); color: var(--text);
+    padding: 9px 14px; border-radius: 8px; cursor: pointer; }
+  button:hover { filter: brightness(0.96); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.warn { background: var(--warn); color: #fff; border-color: var(--warn); }
+  button.danger { color: var(--danger); }
+  button.small { padding: 5px 10px; font-size: 0.85rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+  input { font: inherit; width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); }
+  input.invalid { border-color: var(--danger); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .times { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
+  @media (max-width: 560px) { .times { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } }
+  .avg-box { margin-top: 16px; padding: 14px; border-radius: 10px; background: var(--bg); text-align: center; }
+  .avg-box .val { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  .best { color: var(--best); }
+  .worst { color: var(--worst); }
+  .dropped { opacity: 0.75; }
+  .badge { display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+  .badge.wait { color: var(--warn); border-color: var(--warn); }
+  .badge.done { color: var(--ok); border-color: var(--ok); }
+  .session-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .rank { font-weight: 700; width: 2em; }
+  .hidden { display: none; }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+  dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text);
+    padding: 18px; width: min(380px, calc(100% - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,0.45); }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px; font-size: 0.9rem; max-width: calc(100% - 32px); z-index: 10; }
+  #toast.hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1 style="cursor:pointer" onclick="showView('home')" title="Retour à l'accueil">🧊 Classement AVG Cubeurs</h1>
+    <div class="menu">
+      <button class="primary" onclick="newSession()">Nouvelle session</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Accueil : liste des sessions -->
+  <section id="view-home"><div class="card"><p class="muted">Chargement des sessions…</p></div></section>
+
+  <!-- Saisie d'un cubeur -->
+  <section id="view-entry" class="hidden">
+    <div class="card">
+      <h2 id="entry-title">Nouveau cubeur</h2>
+      <p class="muted" id="entry-session-info"></p>
+      <div class="grid2">
+        <div><label for="f-nom">Nom</label><input id="f-nom" autocomplete="off"></div>
+        <div><label for="f-prenom">Prénom</label><input id="f-prenom" autocomplete="off"></div>
+      </div>
+      <div class="times" id="times"></div>
+      <p class="hint">Tapez uniquement les chiffres, sans virgule : <b>1234</b> → 12.34 · <b>10520</b> → 1:05.20
+        (2 derniers chiffres = centièmes, 2 suivants = secondes, le reste = minutes).
+        <b>Entrée</b> ou <b>Espace</b> passe au temps suivant. Touche <b>D</b> = DNF (essai raté).
+        La meilleure (vert) et la plus mauvaise (rouge) sont ignorées, l'AVG est la moyenne des 3 autres.</p>
+      <div class="avg-box">
+        <div class="muted">AVG (moyenne sur 5)</div>
+        <div class="val" id="avg-val">—</div>
+      </div>
+      <div class="actions">
+        <button class="ok" onclick="saveEntry('next')">Nouveau cubeur</button>
+        <button class="primary" onclick="saveEntry('done')">Valider</button>
+        <button onclick="cancelEntry()">Annuler</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Détail d'une session -->
+  <section id="view-detail" class="hidden"></section>
+</main>
+
+<!-- Fenêtre mot de passe -->
+<dialog id="pw-dialog">
+  <form method="dialog" id="pw-form">
+    <h2 id="pw-title" style="margin:0 0 8px;font-size:1.1rem"></h2>
+    <p id="pw-text" class="muted" style="margin:0 0 12px"></p>
+    <label for="pw-1">Mot de passe</label>
+    <input type="password" id="pw-1" autocomplete="new-password">
+    <div id="pw-confirm-wrap" style="margin-top:10px">
+      <label for="pw-2">Confirmer le mot de passe</label>
+      <input type="password" id="pw-2" autocomplete="new-password">
+    </div>
+    <p id="pw-error" style="color:var(--danger);font-size:0.85rem;min-height:1em;margin:8px 0 0"></p>
+    <div class="actions" style="margin-top:8px">
+      <button type="submit" class="primary" value="ok">OK</button>
+      <button type="button" onclick="document.getElementById('pw-dialog').close('cancel')">Annuler</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" class="hidden"></div>
+
+<script type="module">
+/* ====== CONFIGURATION FIREBASE (à remplir) ====== */
+const firebaseConfig = {
+  apiKey: 'AIzaSyC-oaECiemhryUOQ0sQg8t30jfDa7Qk-Mo',
+  authDomain: 'classement-avg-e13w8.firebaseapp.com',
+  projectId: 'classement-avg-e13w8',
+  storageBucket: 'classement-avg-e13w8.firebasestorage.app',
+  messagingSenderId: '680129423888',
+  appId: '1:680129423888:web:44f18325a759d2c2a3f895'
+};
+/* ================================================= */
+
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getFirestore, collection, doc, onSnapshot, writeBatch, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const KEYS_STORE = 'cube-avg-keys-v1';
+const ID_RE = /^[a-z0-9]{8,24}$/;
+let db = null;
+let sessions = [];
+let loaded = false;
+let view = 'home', detailId = null, detailEditable = false;
+let current = { sessionId: null, entryId: null };
+let keys = loadKeys();
+
+function loadKeys() { try { return JSON.parse(localStorage.getItem(KEYS_STORE)) || {}; } catch (e) { return {}; } }
+function saveKeys() { try { localStorage.setItem(KEYS_STORE, JSON.stringify(keys)); } catch (e) {} }
+const uid = () => (Date.now().toString(36) + Math.random().toString(36).slice(2, 9)).slice(0, 20);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+
+/* ---------- Temps ---------- */
+// Renvoie un nombre de centièmes, Infinity pour DNF, null si vide, NaN si invalide
+function parseTime(str) {
+  const s = String(str || '').trim().replace(',', '.').toUpperCase();
+  if (!s) return null;
+  if (s === 'DNF' || s === 'DNS') return Infinity;
+  let m = s.match(/^(\d+):(\d{1,2}(?:\.\d{0,2})?)$/);
+  if (m) { const sec = parseFloat(m[2]); if (sec >= 60) return NaN; return Math.round((parseInt(m[1]) * 60 + sec) * 100); }
+  m = s.match(/^\d+(?:\.\d{0,2})?$/);
+  if (m) { const v = parseFloat(s); return v >= 60 ? NaN : Math.round(v * 100); }
+  return NaN;
+}
+// Chiffres tapés à la suite → 2 derniers = centièmes, 2 précédents = secondes, le reste = minutes
+function formatDigits(d) {
+  d = d.padStart(3, '0');
+  const cs = d.slice(-2), rest = d.slice(0, -2);
+  const sec = rest.slice(-2), min = rest.slice(0, -2);
+  return min ? `${parseInt(min, 10)}:${sec.padStart(2, '0')}.${cs}` : `${parseInt(sec, 10)}.${cs}`;
+}
+function fmt(cs) {
+  if (cs === null || cs === undefined || Number.isNaN(cs)) return '—';
+  if (cs === Infinity) return 'DNF';
+  const min = Math.floor(cs / 6000), rest = cs - min * 6000;
+  const sec = (rest / 100).toFixed(2);
+  return min > 0 ? `${min}:${sec.padStart(5, '0')}` : sec;
+}
+// AVG WCA : on retire la meilleure et la pire, moyenne des 3 restantes. 2 DNF ou plus → DNF
+function computeAvg(times) {
+  if (times.length !== 5 || times.some(t => t === null || Number.isNaN(t))) return { avg: null };
+  const idx = times.map((t, i) => i).sort((a, b) => times[a] - times[b]);
+  const best = idx[0], worst = idx[4];
+  const mid = idx.slice(1, 4).map(i => times[i]);
+  const avg = mid.some(t => t === Infinity) ? Infinity : Math.round(mid.reduce((a, b) => a + b, 0) / 3);
+  return { avg, best, worst };
+}
+const sortKey = a => (a === null ? Number.MAX_VALUE : a);
+const byRank = (a, b) => (sortKey(a.avg) - sortKey(b.avg)) || (Math.min(...a.times) - Math.min(...b.times));
+
+/* ---------- Base de données ---------- */
+// DNF est enregistré comme -1 dans la base
+function toDoc(s) {
+  return { date: s.date, status: s.status,
+    entries: s.entries.map(e => ({ id: e.id, nom: e.nom, prenom: e.prenom,
+      times: e.times.map(t => t === Infinity ? -1 : t) })) };
+}
+function fromDoc(d) {
+  const data = d.data();
+  const entries = (Array.isArray(data.entries) ? data.entries : []).map((e, i) => {
+    const times = (Array.isArray(e.times) ? e.times : []).slice(0, 5).map(t => (t === -1 ? Infinity : Number(t)));
+    while (times.length < 5) times.push(Infinity);
+    return { id: ID_RE.test(e.id) ? e.id : 'entry' + String(i).padStart(4, '0'),
+      nom: String(e.nom ?? ''), prenom: String(e.prenom ?? ''), times, avg: computeAvg(times).avg };
+  });
+  const date = isNaN(new Date(data.date)) ? new Date(0).toISOString() : data.date;
+  return { id: d.id, date, status: data.status === 'done' ? 'done' : 'wait', entries };
+}
+async function hashPw(id, pw) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cube-avg|' + id + '|' + pw));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function isDenied(err) { return err && (err.code === 'permission-denied' || /permission/i.test(err.message)); }
+
+// Écrit (ou supprime) une session en prouvant qu'on connaît son mot de passe
+async function writeSession(s, { remove = false, key = keys[s.id] } = {}) {
+  const b = writeBatch(db);
+  b.set(doc(db, 'proofs', s.id), { h: key || '', t: serverTimestamp() });
+  if (remove) b.delete(doc(db, 'sessions', s.id));
+  else b.set(doc(db, 'sessions', s.id), toDoc(s));
+  try { await b.commit(); return true; }
+  catch (err) {
+    if (isDenied(err)) {
+      if (key === keys[s.id]) { delete keys[s.id]; saveKeys(); }
+      alert('Mot de passe incorrect : seule la personne qui a créé cette session peut la modifier.');
+    } else alert("Erreur d'enregistrement : " + err.message);
+    return false;
+  }
+}
+
+/* ---------- Mot de passe ---------- */
+function askPassword({ title, text, confirm = false }) {
+  return new Promise(resolve => {
+    const dlg = document.getElementById('pw-dialog');
+    const p1 = document.getElementById('pw-1'), p2 = document.getElementById('pw-2');
+    const errEl = document.getElementById('pw-error');
+    document.getElementById('pw-title').textContent = title;
+    document.getElementById('pw-text').textContent = text;
+    document.getElementById('pw-confirm-wrap').classList.toggle('hidden', !confirm);
+    p1.value = p2.value = ''; errEl.textContent = '';
+    const form = document.getElementById('pw-form');
+    const onSubmit = ev => {
+      if (!p1.value) { ev.preventDefault(); errEl.textContent = 'Saisissez un mot de passe.'; return; }
+      if (confirm && p1.value.length < 4) { ev.preventDefault(); errEl.textContent = 'Au moins 4 caractères.'; return; }
+      if (confirm && p1.value !== p2.value) { ev.preventDefault(); errEl.textContent = 'Les deux mots de passe ne sont pas identiques.'; return; }
+    };
+    form.addEventListener('submit', onSubmit);
+    dlg.addEventListener('close', () => {
+      form.removeEventListener('submit', onSubmit);
+      resolve(dlg.returnValue === 'ok' && p1.value ? p1.value : null);
+    }, { once: true });
+    dlg.returnValue = '';
+    dlg.showModal(); p1.focus();
+  });
+}
+// Vérifie qu'on connaît le mot de passe de la session (demandé une fois par appareil)
+async function ensureKey(id) {
+  if (keys[id]) return true;
+  const pw = await askPassword({ title: 'Mot de passe de la session',
+    text: 'Seule la personne qui a créé cette session peut la modifier ou la supprimer.' });
+  if (!pw) return false;
+  const key = await hashPw(id, pw);
+  const s = getSession(id);
+  if (!s) return false;
+  if (!(await writeSession(s, { key }))) return false;
+  keys[id] = key; saveKeys();
+  return true;
+}
+
+/* ---------- Navigation ---------- */
+function showView(name) {
+  view = name;
+  ['home', 'entry', 'detail'].forEach(v =>
+    document.getElementById('view-' + v).classList.toggle('hidden', v !== name));
+  if (name === 'home') renderHome();
+  window.scrollTo(0, 0);
+}
+const fmtDate = iso => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
+const getSession = id => sessions.find(s => s.id === id);
+
+/* ---------- Session / saisie ---------- */
+async function newSession() {
+  if (!db) return;
+  const pw = await askPassword({ title: 'Nouvelle session',
+    text: 'Choisissez un mot de passe pour cette session. Il vous sera demandé pour modifier ou supprimer les temps depuis un autre appareil. Notez-le bien : il ne peut pas être récupéré.',
+    confirm: true });
+  if (!pw) return;
+  const id = uid(), key = await hashPw(id, pw);
+  const s = { id, date: new Date().toISOString(), status: 'wait', entries: [] };
+  const b = writeBatch(db);
+  b.set(doc(db, 'sessions', id), toDoc(s));
+  b.set(doc(db, 'locks', id), { h: key });
+  try { await b.commit(); } catch (err) { alert('Impossible de créer la session : ' + err.message); return; }
+  keys[id] = key; saveKeys();
+  if (!getSession(id)) sessions.push(s);
+  openEntry(id, null);
+}
+function openEntry(sessionId, entryId) {
+  current = { sessionId, entryId };
+  const s = getSession(sessionId);
+  const e = entryId ? s.entries.find(x => x.id === entryId) : null;
+  document.getElementById('entry-title').textContent = e ? 'Modifier le cubeur' : 'Nouveau cubeur';
+  document.getElementById('entry-session-info').textContent =
+    `Session du ${fmtDate(s.date)} — ${s.entries.length} cubeur(s) enregistré(s)`;
+  document.getElementById('f-nom').value = e ? e.nom : '';
+  document.getElementById('f-prenom').value = e ? e.prenom : '';
+  const box = document.getElementById('times');
+  box.innerHTML = '';
+  for (let i = 0; i < 5; i++) {
+    const v = e ? fmt(e.times[i]) : '';
+    box.insertAdjacentHTML('beforeend',
+      `<div><label for="t${i}">Essai ${i + 1}</label><input id="t${i}" inputmode="numeric" autocomplete="off" value="${esc(v)}"></div>`);
+  }
+  box.querySelectorAll('input').forEach((inp, i, all) => {
+    inp.addEventListener('input', () => {
+      if (inp.value !== 'DNF') {
+        const digits = inp.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6);
+        inp.value = digits ? formatDigits(digits) : '';
+      }
+      updateAvg();
+    });
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); (all[i + 1] || document.querySelector('#view-entry .actions .ok')).focus(); return; }
+      if (ev.key === 'd' || ev.key === 'D') { ev.preventDefault(); inp.value = 'DNF'; updateAvg(); return; }
+      if (inp.value === 'DNF' && (ev.key === 'Backspace' || ev.key === 'Delete' || /^\d$/.test(ev.key))) {
+        if (!/^\d$/.test(ev.key)) ev.preventDefault();
+        inp.value = ''; updateAvg();
+      }
+    });
+    inp.addEventListener('focus', () => { const l = inp.value.length; inp.setSelectionRange(l, l); });
+  });
+  showView('entry');
+  updateAvg();
+  document.getElementById('f-nom').focus();
+}
+function readTimes() {
+  return [0, 1, 2, 3, 4].map(i => parseTime(document.getElementById('t' + i).value));
+}
+function updateAvg() {
+  const times = readTimes();
+  times.forEach((t, i) => {
+    const inp = document.getElementById('t' + i);
+    inp.classList.toggle('invalid', Number.isNaN(t));
+    inp.classList.remove('best', 'worst');
+  });
+  const r = computeAvg(times);
+  document.getElementById('avg-val').textContent = r.avg === null ? '—' : fmt(r.avg);
+  if (r.avg !== null) {
+    document.getElementById('t' + r.best).classList.add('best');
+    document.getElementById('t' + r.worst).classList.add('worst');
+  }
+}
+async function saveEntry(mode) {
+  const nom = document.getElementById('f-nom').value.trim();
+  const prenom = document.getElementById('f-prenom').value.trim();
+  const times = readTimes();
+  if (!nom || !prenom) { alert('Merci de renseigner le nom et le prénom.'); return; }
+  if (times.some(t => t === null || Number.isNaN(t))) { alert('Merci de saisir 5 temps valides (ex : 1234 pour 12.34, ou D pour DNF).'); return; }
+  const s = structuredClone(getSession(current.sessionId));
+  const avg = computeAvg(times).avg;
+  if (current.entryId) Object.assign(s.entries.find(x => x.id === current.entryId), { nom, prenom, times, avg });
+  else s.entries.push({ id: uid(), nom, prenom, times, avg });
+  if (mode === 'done') s.status = 'done';
+  if (!(await writeSession(s))) return;
+  Object.assign(getSession(s.id) || {}, s);
+  if (mode === 'next') { toast(`${prenom} ${nom} enregistré(e) — AVG ${fmt(avg)}`); openEntry(s.id, null); }
+  else openDetail(s.id, false);
+}
+async function cancelEntry() {
+  const s = getSession(current.sessionId);
+  if (s && s.entries.length === 0) { await writeSession(s, { remove: true }); showView('home'); }
+  else openDetail(s.id, true);
+}
+
+/* ---------- Affichage ---------- */
+function rankingTable(s, editable) {
+  if (!s.entries.length) return '<p class="muted">Aucun cubeur dans cette session.</p>';
+  const rows = [...s.entries].sort(byRank).map((e, i) => {
+    const { best, worst } = computeAvg(e.times);
+    const cells = e.times.map((t, j) =>
+      `<td class="${j === best ? 'best dropped' : j === worst ? 'worst dropped' : ''}">${j === best || j === worst ? '(' + fmt(t) + ')' : fmt(t)}</td>`).join('');
+    const medal = ['🥇', '🥈', '🥉'][i] || (i + 1);
+    const btns = editable ? `<td style="white-space:nowrap">
+        <button class="small" onclick="openEntry('${s.id}','${e.id}')">Modifier</button>
+        <button class="small danger" onclick="deleteEntry('${s.id}','${e.id}')">Suppr.</button></td>` : '';
+    return `<tr><td class="rank">${medal}</td><td>${esc(e.prenom)} ${esc(e.nom.toUpperCase())}</td>
+      <td><b>${fmt(e.avg)}</b></td><td>${fmt(Math.min(...e.times))}</td>${cells}${btns}</tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Cubeur</th><th>AVG</th><th>Meilleur single</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th>${editable ? '<th></th>' : ''}</tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function statusBadge(s) {
+  return s.status === 'done' ? '<span class="badge done">Validée</span>' : '<span class="badge wait">En attente</span>';
+}
+function podium(s) {
+  const top = [...s.entries].sort(byRank).slice(0, 3);
+  return top.map((e, i) => `${['🥇', '🥈', '🥉'][i]} ${esc(e.prenom)} ${esc(e.nom.toUpperCase())} (${fmt(e.avg)})`).join(' &nbsp; ');
+}
+function renderHome() {
+  const el = document.getElementById('view-home');
+  if (!db) {
+    el.innerHTML = `<div class="card"><h2>Configuration manquante</h2>
+      <p>La base de données Firebase n'est pas encore configurée.</p></div>`;
+    return;
+  }
+  if (!loaded) { el.innerHTML = '<div class="card"><p class="muted">Chargement des sessions…</p></div>'; return; }
+  const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
+  if (!sorted.length) {
+    el.innerHTML = `<div class="card"><h2>Bienvenue !</h2>
+      <p>Appuyez sur <b>Nouvelle session</b> pour enregistrer les temps des cubeurs.</p></div>`;
+    return;
+  }
+  const list = sorted.map(s => `<div class="session-row">
+      <div><b>${fmtDate(s.date)}</b> ${statusBadge(s)}<br>
+        <span class="muted">${s.entries.length} cubeur(s)</span>
+        ${s.entries.length ? `<div style="margin-top:4px;font-size:0.9rem">${podium(s)}</div>` : ''}</div>
+      <div style="white-space:nowrap">
+        <button class="small" onclick="openDetail('${s.id}', false)">Visualiser</button>
+        <button class="small danger" onclick="deleteSession('${s.id}')">Supprimer</button></div>
+    </div>`).join('');
+  el.innerHTML = `<div class="card"><h2>Sessions (${sorted.length})</h2>${list}</div>`;
+}
+async function openDetail(id, editable = true) {
+  if (editable && !(await ensureKey(id))) return;
+  const s = getSession(id);
+  if (!s) { showView('home'); return; }
+  detailId = id; detailEditable = editable;
+  const el = document.getElementById('view-detail');
+  if (!editable) {
+    el.innerHTML = `<div class="card">
+      <h2>Session du ${fmtDate(s.date)} ${statusBadge(s)}</h2>
+      ${rankingTable(s, false)}
+      <div class="actions">
+        <button class="primary" onclick="openDetail('${s.id}', true)">Modifier</button>
+        <button onclick="showView('home')">Retour à l'accueil</button>
+      </div></div>`;
+    showView('detail');
+    return;
+  }
+  const dateLocal = new Date(new Date(s.date).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  el.innerHTML = `<div class="card">
+    <h2>Session du ${fmtDate(s.date)} ${statusBadge(s)}</h2>
+    <div style="max-width:260px;margin-bottom:12px"><label for="s-date">Date de la session</label>
+      <input type="datetime-local" id="s-date" value="${dateLocal}" onchange="changeDate('${s.id}', this.value)"></div>
+    ${rankingTable(s, true)}
+    <div class="actions">
+      <button class="ok" onclick="openEntry('${s.id}', null)">Ajouter un cubeur</button>
+      ${s.status === 'done'
+        ? `<button class="warn" onclick="setStatus('${s.id}','wait')">Remettre en attente</button>`
+        : `<button class="primary" onclick="setStatus('${s.id}','done')">Valider la session</button>`}
+      <button onclick="showView('home')">Retour à l'accueil</button>
+    </div></div>`;
+  showView('detail');
+}
+async function updateSession(id, change) {
+  const s = structuredClone(getSession(id));
+  change(s);
+  if (await writeSession(s)) { Object.assign(getSession(id) || {}, s); openDetail(id, true); }
+}
+function changeDate(id, v) { if (v) updateSession(id, s => { s.date = new Date(v).toISOString(); }); }
+function setStatus(id, st) { updateSession(id, s => { s.status = st; }); }
+function deleteEntry(sid, eid) {
+  const e = getSession(sid).entries.find(x => x.id === eid);
+  if (!confirm(`Supprimer ${e.prenom} ${e.nom} de cette session ?`)) return;
+  updateSession(sid, s => { s.entries = s.entries.filter(x => x.id !== eid); });
+}
+async function deleteSession(id) {
+  if (!(await ensureKey(id))) return;
+  if (!confirm('Supprimer définitivement cette session et tous ses temps ?')) return;
+  if (await writeSession(getSession(id), { remove: true })) {
+    delete keys[id]; saveKeys();
+    sessions = sessions.filter(x => x.id !== id);
+    showView('home');
+  }
+}
+
+// Fonctions utilisées par les boutons de la page
+Object.assign(window, { showView, newSession, openEntry, saveEntry, cancelEntry, openDetail,
+  changeDate, setStatus, deleteEntry, deleteSession });
+
+/* ---------- Démarrage ---------- */
+if (firebaseConfig) {
+  db = getFirestore(initializeApp(firebaseConfig));
+  onSnapshot(collection(db, 'sessions'), snap => {
+    sessions = snap.docs.filter(d => ID_RE.test(d.id)).map(fromDoc);
+    loaded = true;
+    // Mise à jour en direct (sauf pendant une saisie, pour ne pas effacer ce qui est tapé)
+    if (view === 'home') renderHome();
+    else if (view === 'detail') { if (getSession(detailId)) openDetail(detailId, detailEditable && !!keys[detailId]); else showView('home'); }
+  }, err => {
+    document.getElementById('view-home').innerHTML =
+      `<div class="card"><h2>Erreur</h2><p>Impossible de lire les sessions : ${esc(err.message)}</p></div>`;
+  });
+}
+showView('home');
+</script>
+</body>
+</html>

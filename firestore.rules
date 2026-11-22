@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Empreinte du mot de passe de la session (illisible depuis l'application)
+    function lockHash(id) {
+      return get(/databases/$(db)/documents/locks/$(id)).data.h;
+    }
+    // La requête doit contenir une "preuve" toute neuve avec la bonne empreinte
+    function proofOk(id) {
+      let p = getAfter(/databases/$(db)/documents/proofs/$(id));
+      return p != null && p.data.t == request.time && p.data.h == lockHash(id);
+    }
+
+    match /sessions/{id} {
+      allow read: if true;
+      allow create: if id.matches('^[a-z0-9]{8,24}$')
+        && !exists(/databases/$(db)/documents/locks/$(id))
+        && existsAfter(/databases/$(db)/documents/locks/$(id));
+      allow update, delete: if proofOk(id);
+    }
+
+    match /locks/{id} {
+      allow read, update, delete: if false;
+      allow create: if request.resource.data.h is string
+        && request.resource.data.h.size() == 64
+        && existsAfter(/databases/$(db)/documents/sessions/$(id));
+    }
+
+    match /proofs/{id} {
+      allow read, delete: if false;
+      allow create, update: if request.resource.data.t == request.time
+        && request.resource.data.h is string;
+    }
+  }
+}
